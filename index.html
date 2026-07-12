@@ -72,13 +72,15 @@ function timeUp(){
   const q=view.list[view.idx];
   view.sessionRec=view.sessionRec||{};view.sessionRec[q.id]=0;
   state.rec[q.id]=0;
+  state.wrongEver[q.id]=1;
   if(view.o.mode==='seq')state.last[view.o.sec]=q.id;
   save();
   reveal(null,false,true);
 }
 const SECS=['言语理解','资料分析','图形推理'];
 const LS='bs_tiku_v1';
-function load(){try{state=JSON.parse(localStorage.getItem(LS))||{}}catch(e){state={}};state.rec=state.rec||{};state.last=state.last||{}}
+function load(){try{state=JSON.parse(localStorage.getItem(LS))||{}}catch(e){state={}};state.rec=state.rec||{};state.last=state.last||{};
+  if(!state.wrongEver){state.wrongEver={};Object.keys(state.rec).forEach(id=>{if(state.rec[id]===0)state.wrongEver[id]=1})}}
 function save(){localStorage.setItem(LS,JSON.stringify(state))}
 const $=h=>{const d=document.createElement('div');d.innerHTML=h;return d.firstElementChild};
 const app=document.getElementById('app');
@@ -92,12 +94,13 @@ function counts(sec){
   list.forEach(q=>{const r=state.rec[q.id];if(r===1)ok++;else if(r===0)err++});
   return{total:list.length,ok,err,done:ok+err};
 }
-function wrongList(){return QS.filter(q=>state.rec[q.id]===0)}
+function wrongList(){return QS.filter(q=>state.wrongEver[q.id])}
+function doneList(){return QS.filter(q=>state.rec[q.id]!==undefined)}
 
 function home(){
   stopTimer();
   view={page:'home'};
-  const all=counts('all'),wl=wrongList().length;
+  const all=counts('all'),wl=wrongList().length,dl=doneList().length;
   let h=`<header><h1>📚 北森测评题库</h1><span class="pill">${QS.length} 题</span></header>
   <div class="stat">
     <div><b>${all.done}</b><span>已刷</span></div>
@@ -119,7 +122,10 @@ function home(){
     <button class="btn ghost" id="btn-wrong">📕 错题本 (${wl})</button>
   </div>
   <div class="row" style="margin-top:10px">
+    <button class="btn ghost" id="btn-done">📖 已刷题练习 (${dl})</button>
     <button class="btn ghost" id="btn-nav">🗺 题目总览</button>
+  </div>
+  <div class="row" style="margin-top:10px">
     <button class="btn ghost" id="btn-reset" style="color:var(--err);background:#fdecec">清空记录</button>
   </div>`;
   app.innerHTML=h;
@@ -127,8 +133,9 @@ function home(){
   document.getElementById('btn-train').onclick=()=>startTrain();
   document.getElementById('btn-rand').onclick=()=>startQuiz({sec:'all',mode:'rand'});
   document.getElementById('btn-wrong').onclick=()=>startQuiz({sec:'all',mode:'wrong'});
+  document.getElementById('btn-done').onclick=()=>startQuiz({sec:'all',mode:'done'});
   document.getElementById('btn-nav').onclick=navView;
-  document.getElementById('btn-reset').onclick=()=>{if(confirm('确定清空全部做题记录？')){state={rec:{},last:{}};save();home()}};
+  document.getElementById('btn-reset').onclick=()=>{if(confirm('确定清空全部做题记录？')){state={rec:{},last:{},wrongEver:{}};save();home()}};
 }
 
 function sample(arr,n){const a=[...arr];for(let i=a.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[a[i],a[j]]=[a[j],a[i]]}return a.slice(0,n)}
@@ -141,7 +148,8 @@ function startTrain(){
 }
 function buildList(o){
   let list=QS.filter(q=>o.sec==='all'||q.section===o.sec);
-  if(o.mode==='wrong')list=wrongList();
+  if(o.mode==='wrong')list=sample(wrongList(),QS.length);
+  if(o.mode==='done')list=sample(doneList(),QS.length);
   if(o.mode==='rand'){
     if(o.sec==='all'){list=[];SECS.forEach(s=>{list=list.concat(sample(QS.filter(q=>q.section===s),15))})}
     else{list=sample(list,15)}
@@ -151,7 +159,7 @@ function buildList(o){
 }
 function startQuiz(o){
   const list=buildList(o);
-  if(!list.length){alert(o.mode==='wrong'?'错题本是空的，先去刷题吧！':'没有题目');return}
+  if(!list.length){alert(o.mode==='wrong'?'错题本是空的，先去刷题吧！':o.mode==='done'?'还没刷过题，先去刷题吧！':'没有题目');return}
   let idx=0;
   if(o.mode==='seq'){
     const lastId=state.last[o.sec];
@@ -194,7 +202,7 @@ function renderQ(){
   document.querySelectorAll('.opt').forEach(el=>el.onclick=()=>answer(el.dataset.l));
   const pk=document.getElementById('q-peek');if(pk)pk.onclick=peek;
   stopTimer();
-  if(r!==undefined&&o.mode!=='wrong')reveal(null,true);
+  if(r!==undefined&&o.mode==='seq')reveal(null,true);
   else if(!view.answered)startTimer();
 }
 function peek(){
@@ -219,6 +227,7 @@ function answer(L){
   const ok=L===q.answer;
   view.sessionRec=view.sessionRec||{};view.sessionRec[q.id]=ok?1:0;
   state.rec[q.id]=ok?1:0;
+  if(!ok)state.wrongEver[q.id]=1;
   if(view.o.mode==='seq')state.last[view.o.sec]=q.id;
   save();
   reveal(L,false);
