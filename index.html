@@ -97,7 +97,10 @@ function home(){
     h+=`<div class="secbtn" data-sec="${s}"><div><b>${s}</b><div class="meta">${c.done}/${c.total} · 正确率 ${c.done?Math.round(c.ok/c.done*100):0}%</div></div><span style="color:var(--pri)">刷题 ›</span></div>`;
   });
   h+=`<div class="row" style="margin-top:14px">
-    <button class="btn" id="btn-rand">🎲 随机刷题</button>
+    <button class="btn" id="btn-train">🏋️ 训练模式（各题型10题）</button>
+  </div>
+  <div class="row" style="margin-top:10px">
+    <button class="btn ghost" id="btn-rand">🎲 随机刷题</button>
     <button class="btn ghost" id="btn-wrong">📕 错题本 (${wl})</button>
   </div>
   <div class="row" style="margin-top:10px">
@@ -106,12 +109,21 @@ function home(){
   </div>`;
   app.innerHTML=h;
   document.querySelectorAll('.secbtn').forEach(el=>el.onclick=()=>startQuiz({sec:el.dataset.sec,mode:'seq'}));
+  document.getElementById('btn-train').onclick=()=>startTrain();
   document.getElementById('btn-rand').onclick=()=>startQuiz({sec:'all',mode:'rand'});
   document.getElementById('btn-wrong').onclick=()=>startQuiz({sec:'all',mode:'wrong'});
   document.getElementById('btn-nav').onclick=navView;
   document.getElementById('btn-reset').onclick=()=>{if(confirm('确定清空全部做题记录？')){state={rec:{},last:{}};save();home()}};
 }
 
+function sample(arr,n){const a=[...arr];for(let i=a.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[a[i],a[j]]=[a[j],a[i]]}return a.slice(0,n)}
+function startTrain(){
+  let list=[];
+  SECS.forEach(s=>{list=list.concat(sample(QS.filter(q=>q.section===s),10))});
+  if(!list.length){alert('题库为空');return}
+  view={page:'quiz',o:{sec:'train',mode:'train'},list,idx:0,answered:null};
+  renderQ();window.scrollTo(0,0);
+}
 function buildList(o){
   let list=QS.filter(q=>o.sec==='all'||q.section===o.sec);
   if(o.mode==='wrong')list=wrongList();
@@ -154,7 +166,10 @@ function renderQ(){
   document.getElementById('q-back').onclick=home;
   document.getElementById('q-prev').onclick=()=>{if(idx>0){view.idx--;view.answered=null;renderQ()}};
   document.getElementById('q-next').onclick=()=>{
-    if(idx===list.length-1){home();return}
+    if(idx===list.length-1){
+      if(o.mode==='train'){trainSummary();return}
+      home();return;
+    }
     view.idx++;view.answered=null;renderQ();window.scrollTo(0,0);
   };
   document.querySelectorAll('.opt').forEach(el=>el.onclick=()=>answer(el.dataset.l));
@@ -165,6 +180,7 @@ function answer(L){
   view.answered=L;
   const q=view.list[view.idx];
   const ok=L===q.answer;
+  view.sessionRec=view.sessionRec||{};view.sessionRec[q.id]=ok?1:0;
   state.rec[q.id]=ok?1:0;
   if(view.o.mode==='seq')state.last[view.o.sec]=q.id;
   save();
@@ -188,6 +204,38 @@ function reveal(L,past){
     fb+=`</div>`;
   }
   document.getElementById('feedback').innerHTML=fb;
+}
+function trainSummary(){
+  const rec=view.sessionRec||{};
+  const bySec={};
+  view.list.forEach(q=>{
+    bySec[q.section]=bySec[q.section]||{ok:0,done:0,total:0};
+    bySec[q.section].total++;
+    if(rec[q.id]!==undefined){bySec[q.section].done++;if(rec[q.id]===1)bySec[q.section].ok++}
+  });
+  let ok=0,done=0;
+  Object.values(bySec).forEach(v=>{ok+=v.ok;done+=v.done});
+  const pct=done?Math.round(ok/done*100):0;
+  const emoji=pct>=90?'🏆':pct>=70?'🎉':pct>=50?'💪':'📚';
+  let h=`<header><span class="back" id="t-back">‹ 返回首页</span><h1 style="font-size:17px">训练成绩</h1><span></span></header>
+  <div class="card" style="text-align:center">
+    <div style="font-size:44px">${emoji}</div>
+    <div style="font-size:26px;font-weight:700;margin:6px 0">${ok} / ${done}</div>
+    <div style="color:var(--sub)">正确率 ${pct}%${done<view.list.length?` · 未作答 ${view.list.length-done} 题`:''}</div>
+  </div><div class="card">`;
+  Object.entries(bySec).forEach(([s,v])=>{
+    const p=v.done?Math.round(v.ok/v.done*100):0;
+    h+=`<div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--bd)"><b>${s}</b><span>${v.ok}/${v.done} · ${p}%</span></div>`;
+  });
+  h+=`</div><div class="row">
+    <button class="btn" id="t-again">🏋️ 再来一组</button>
+    <button class="btn ghost" id="t-home">返回首页</button>
+  </div>`;
+  app.innerHTML=h;
+  document.getElementById('t-back').onclick=home;
+  document.getElementById('t-home').onclick=home;
+  document.getElementById('t-again').onclick=startTrain;
+  window.scrollTo(0,0);
 }
 function navView(){
   let h=`<header><span class="back" id="n-back">‹ 返回</span><h1 style="font-size:17px">题目总览</h1><span></span></header>`;
