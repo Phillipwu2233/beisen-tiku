@@ -62,6 +62,20 @@ header h1{font-size:19px}
 <div class="wrap" id="app"><div class="empty">加载题库中…</div></div>
 <script>
 let QS=[],state={},view={page:'home'};
+let TIMER=null,TLEFT=0;const TLIMIT=60;
+function stopTimer(){if(TIMER){clearInterval(TIMER);TIMER=null}}
+function startTimer(){stopTimer();TLEFT=TLIMIT;updTimer();TIMER=setInterval(()=>{TLEFT--;updTimer();if(TLEFT<=0){stopTimer();timeUp()}},1000)}
+function updTimer(){const el=document.getElementById('q-timer');if(el){el.textContent='⏱ '+TLEFT+'s';el.style.color=TLEFT<=10?'var(--err)':'var(--sub)';el.style.fontWeight=TLEFT<=10?'700':'400'}}
+function timeUp(){
+  if(view.answered)return;
+  view.answered='timeout';
+  const q=view.list[view.idx];
+  view.sessionRec=view.sessionRec||{};view.sessionRec[q.id]=0;
+  state.rec[q.id]=0;
+  if(view.o.mode==='seq')state.last[view.o.sec]=q.id;
+  save();
+  reveal(null,false,true);
+}
 const SECS=['言语理解','资料分析','图形推理'];
 const LS='bs_tiku_v1';
 function load(){try{state=JSON.parse(localStorage.getItem(LS))||{}}catch(e){state={}};state.rec=state.rec||{};state.last=state.last||{}}
@@ -81,6 +95,7 @@ function counts(sec){
 function wrongList(){return QS.filter(q=>state.rec[q.id]===0)}
 
 function home(){
+  stopTimer();
   view={page:'home'};
   const all=counts('all'),wl=wrongList().length;
   let h=`<header><h1>📚 北森测评题库</h1><span class="pill">${QS.length} 题</span></header>
@@ -151,7 +166,7 @@ function renderQ(){
   const r=state.rec[q.id];
   const isFig=q.section==='图形推理';
   const hasTextOpts=Object.keys(q.options).length>0;
-  let h=`<header><span class="back" id="q-back">‹ 返回</span><span style="font-size:13px;color:var(--sub)">${q.section} · 第 ${q.no} 题</span><span class="pill">${idx+1}/${list.length}</span></header>
+  let h=`<header><span class="back" id="q-back">‹ 返回</span><span style="font-size:13px;color:var(--sub)">${q.section} · 第 ${q.no} 题　<span id="q-timer"></span></span><span class="pill">${idx+1}/${list.length}</span></header>
   <div class="card">
   <div class="stem">${esc(q.stem)}</div>`;
   q.stem_imgs.forEach(f=>h+=`<img src="img/${f}" loading="lazy">`);
@@ -178,10 +193,13 @@ function renderQ(){
   };
   document.querySelectorAll('.opt').forEach(el=>el.onclick=()=>answer(el.dataset.l));
   const pk=document.getElementById('q-peek');if(pk)pk.onclick=peek;
+  stopTimer();
   if(r!==undefined&&o.mode!=='wrong')reveal(null,true);
+  else if(!view.answered)startTimer();
 }
 function peek(){
   if(view.answered)return;
+  stopTimer();
   view.answered='peek';
   const q=view.list[view.idx];
   document.querySelectorAll('.opt').forEach(el=>{el.onclick=null;if(el.dataset.l===q.answer)el.classList.add('right');else el.classList.add('dim')});
@@ -195,6 +213,7 @@ function peek(){
 }
 function answer(L){
   if(view.answered)return;
+  stopTimer();
   view.answered=L;
   const q=view.list[view.idx];
   const ok=L===q.answer;
@@ -204,7 +223,7 @@ function answer(L){
   save();
   reveal(L,false);
 }
-function reveal(L,past){
+function reveal(L,past,timeout){
   const q=view.list[view.idx];
   document.querySelectorAll('.opt').forEach(el=>{
     const l=el.dataset.l;
@@ -214,7 +233,8 @@ function reveal(L,past){
     else el.classList.add('dim');
   });
   const ok=past?state.rec[q.id]===1:(L===q.answer);
-  let fb=past?`<div class="result ${ok?'ok':'err'}">${ok?'✅ 之前答对了':'❌ 之前答错了'} · 正确答案 ${q.answer}</div>`
+  let fb=timeout?`<div class="result err">⏰ 超时（60秒），本题判错 · 正确答案 ${q.answer}</div>`
+           :past?`<div class="result ${ok?'ok':'err'}">${ok?'✅ 之前答对了':'❌ 之前答错了'} · 正确答案 ${q.answer}</div>`
            :`<div class="result ${ok?'ok':'err'}">${ok?'🎉 回答正确！':'❌ 答错了'} · 正确答案 ${q.answer}</div>`;
   if(q.jiexi||q.jiexi_imgs.length){
     fb+=`<div class="jiexi"><b>💡 解析：</b>${esc(q.jiexi)||'（无文字解析）'}`;
@@ -224,6 +244,7 @@ function reveal(L,past){
   document.getElementById('feedback').innerHTML=fb;
 }
 function trainSummary(){
+  stopTimer();
   const rec=view.sessionRec||{};
   const bySec={};
   view.list.forEach(q=>{
@@ -256,6 +277,7 @@ function trainSummary(){
   window.scrollTo(0,0);
 }
 function navView(){
+  stopTimer();
   let h=`<header><span class="back" id="n-back">‹ 返回</span><h1 style="font-size:17px">题目总览</h1><span></span></header>`;
   SECS.forEach(s=>{
     const list=QS.filter(q=>q.section===s);
