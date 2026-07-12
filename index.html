@@ -158,7 +158,7 @@ function renderQ(){
   letters.forEach(L=>{
     h+=`<div class="opt" data-l="${L}"><span class="tag">${L}</span><span>${hasTextOpts?esc(q.options[L]):'选 '+L}</span></div>`;
   });
-  h+=`</div><div id="feedback"></div></div>`;
+  h+=`</div><div style="text-align:right;margin-bottom:4px"><span id="q-peek" style="font-size:13px;color:var(--sub);cursor:pointer;text-decoration:underline">👀 直接看答案</span></div><div id="feedback"></div></div>`;
   app.innerHTML=h+`<div class="foot"><div class="inner">
     <button class="btn ghost" id="q-prev" ${idx===0?'disabled style="opacity:.4"':''}>上一题</button>
     <button class="btn" id="q-next">${idx===list.length-1?'完成':'下一题'}</button>
@@ -173,7 +173,21 @@ function renderQ(){
     view.idx++;view.answered=null;renderQ();window.scrollTo(0,0);
   };
   document.querySelectorAll('.opt').forEach(el=>el.onclick=()=>answer(el.dataset.l));
+  const pk=document.getElementById('q-peek');if(pk)pk.onclick=peek;
   if(r!==undefined&&o.mode!=='wrong')reveal(null,true);
+}
+function peek(){
+  if(view.answered)return;
+  view.answered='peek';
+  const q=view.list[view.idx];
+  document.querySelectorAll('.opt').forEach(el=>{el.onclick=null;if(el.dataset.l===q.answer)el.classList.add('right');else el.classList.add('dim')});
+  let fb=`<div class="result ok">👀 正确答案 ${q.answer}（背题模式，不计入统计）</div>`;
+  if(q.jiexi||q.jiexi_imgs.length){
+    fb+=`<div class="jiexi"><b>💡 解析：</b>${esc(q.jiexi)||'（无文字解析）'}`;
+    q.jiexi_imgs.forEach(f=>fb+=`<img src="img/${f}" loading="lazy">`);
+    fb+=`</div>`;
+  }
+  document.getElementById('feedback').innerHTML=fb;
 }
 function answer(L){
   if(view.answered)return;
