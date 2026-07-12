@@ -79,16 +79,18 @@ function timeUp(){
 }
 const SECS=['言语理解','资料分析','图形推理'];
 const LS='bs_tiku_v1';
-const SYNC_URL='https://mantledb.sh/v2/beisen-tiku-3251d869adf74743f0a8/progress';
+const SYNC_BASE='https://mantledb.sh/v2/beisen-tiku-3251d869adf74743f0a8';
+function syncUrl(){return SYNC_BASE+'/user-'+encodeURIComponent(state.user)}
 const SYNC_KEY='2a2dafafb1012c348299de6b2b6d5f529e4630c3690539a028447b72abedc2f9';
 let syncTimer=null,syncStatus='☁️ 连接云端…';
 function updSyncBadge(){const el=document.getElementById('sync-badge');if(el)el.textContent=syncStatus}
 function cloudPush(){
-  fetch(SYNC_URL,{method:'POST',headers:{'Content-Type':'application/json','X-Mantle-Key':SYNC_KEY},body:JSON.stringify({rec:state.rec,last:state.last,wrongEver:state.wrongEver,t:Date.now()})})
+  if(!state.user)return;
+  fetch(syncUrl(),{method:'POST',headers:{'Content-Type':'application/json','X-Mantle-Key':SYNC_KEY},body:JSON.stringify({rec:state.rec,last:state.last,wrongEver:state.wrongEver,t:Date.now()})})
   .then(r=>{syncStatus=r.ok?'☁️ 已同步云端 '+new Date().toLocaleTimeString('zh-CN',{hour:'2-digit',minute:'2-digit'}):'⚠️ 云同步失败（本地已保存）';updSyncBadge()})
   .catch(()=>{syncStatus='⚠️ 离线（本地已保存）';updSyncBadge()});
 }
-function cloudPull(){return fetch(SYNC_URL,{headers:{'X-Mantle-Key':SYNC_KEY}}).then(r=>r.ok?r.json():null).catch(()=>null)}
+function cloudPull(){if(!state.user)return Promise.resolve(null);return fetch(syncUrl(),{headers:{'X-Mantle-Key':SYNC_KEY}}).then(r=>r.ok?r.json():null).catch(()=>null)}
 function mergeCloud(c){
   if(!c||typeof c!=='object'||!c.rec)return 0;
   let n=0;
@@ -104,15 +106,34 @@ const $=h=>{const d=document.createElement('div');d.innerHTML=h;return d.firstEl
 const app=document.getElementById('app');
 const esc=s=>(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;');
 
-fetch('questions.json').then(r=>r.json()).then(d=>{QS=d;load();home();
+function bootSync(){
   cloudPull().then(c=>{
     if(c===null){syncStatus='⚠️ 云端连不上（不影响使用）';updSyncBadge();return}
     const n=mergeCloud(c);
     syncStatus='☁️ 已同步云端 '+new Date().toLocaleTimeString('zh-CN',{hour:'2-digit',minute:'2-digit'});
-    if(n>0){localStorage.setItem(LS,JSON.stringify(state));if(view.page==='home'){home();return}}
+    if(n>0){localStorage.setItem(LS,JSON.stringify(state));clearTimeout(syncTimer);syncTimer=setTimeout(cloudPush,1500);if(view.page==='home'){home();return}}
     updSyncBadge();
   });
-});
+}
+fetch('questions.json').then(r=>r.json()).then(d=>{QS=d;load();if(state.user){home();bootSync()}else profileView()});
+function profileView(){
+  view={page:'profile'};
+  app.innerHTML=`<header><h1>📚 北森测评题库</h1></header>
+  <div class="card" style="text-align:center;padding:28px 16px">
+    <div style="font-size:40px">👤</div>
+    <div style="font-size:17px;font-weight:700;margin:10px 0 4px">你是谁呀？</div>
+    <div style="font-size:13.5px;color:var(--sub);margin-bottom:14px">输入一个昵称，做题记录会存到你自己的云端存档。<br>换设备时输入<b>同一个昵称</b>就能找回进度。</div>
+    <input id="p-name" placeholder="比如：小美" maxlength="16" style="width:100%;border:1.5px solid var(--bd);border-radius:10px;padding:12px;font-size:16px;text-align:center">
+    <button class="btn" id="p-go" style="width:100%;margin-top:12px">开始刷题 →</button>
+  </div>`;
+  const go=()=>{
+    const v=document.getElementById('p-name').value.trim();
+    if(!v){alert('输入个昵称嘛');return}
+    state.user=v;save();home();bootSync();
+  };
+  document.getElementById('p-go').onclick=go;
+  document.getElementById('p-name').onkeydown=e=>{if(e.key==='Enter')go()};
+}
 
 function counts(sec){
   const list=QS.filter(q=>sec==='all'||q.section===sec);
@@ -127,7 +148,7 @@ function home(){
   stopTimer();
   view={page:'home'};
   const all=counts('all'),wl=wrongList().length,dl=doneList().length;
-  let h=`<header><h1>📚 北森测评题库</h1><span class="pill">${QS.length} 题</span></header>
+  let h=`<header><h1>📚 北森测评题库</h1><span class="pill" id="who" style="cursor:pointer">👤 ${state.user||'?'}</span></header>
   <div class="stat">
     <div><b>${all.done}</b><span>已刷</span></div>
     <div><b style="color:var(--ok)">${all.ok}</b><span>答对</span></div>
@@ -156,6 +177,7 @@ function home(){
     <button class="btn ghost" id="btn-reset" style="color:var(--err);background:#fdecec">清空记录</button>
   </div>`;
   app.innerHTML=h;
+  document.getElementById('who').onclick=()=>{if(confirm('切换用户？当前记录已存在「'+state.user+'」的云端存档里，切换后输入原昵称可随时找回。')){clearTimeout(syncTimer);localStorage.removeItem(LS);location.reload()}};
   document.querySelectorAll('.secbtn').forEach(el=>el.onclick=()=>startQuiz({sec:el.dataset.sec,mode:'seq'}));
   document.getElementById('btn-train').onclick=()=>startTrain();
   document.getElementById('btn-rand').onclick=()=>startQuiz({sec:'all',mode:'rand'});
@@ -163,7 +185,7 @@ function home(){
   document.getElementById('btn-done').onclick=()=>startQuiz({sec:'all',mode:'done'});
   document.getElementById('btn-nav').onclick=navView;
   document.getElementById('btn-sync').onclick=syncView;
-  document.getElementById('btn-reset').onclick=()=>{if(confirm('确定清空全部做题记录？')){state={rec:{},last:{},wrongEver:{}};save();home()}};
+  document.getElementById('btn-reset').onclick=()=>{if(confirm('确定清空全部做题记录？')){state={rec:{},last:{},wrongEver:{},user:state.user};save();home()}};
 }
 
 function sample(arr,n){const a=[...arr];for(let i=a.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[a[i],a[j]]=[a[j],a[i]]}return a.slice(0,n)}
@@ -321,7 +343,7 @@ function syncView(){
   let h=`<header><span class="back" id="s-back">‹ 返回</span><h1 style="font-size:17px">☁️ 换设备同步</h1><span></span></header>
   <div class="card">
     <b>☁️ 自动云同步已开启</b>
-    <div style="font-size:13.5px;color:var(--sub);margin:6px 0 4px">做题记录会自动同步到云端。换设备打开本网页，稍等 1-2 秒会自动恢复进度，什么都不用做。下面的「进度码」是备用方案（云端故障时用）。</div>
+    <div style="font-size:13.5px;color:var(--sub);margin:6px 0 4px">做题记录会自动同步到云端。换设备打开本网页，输入同一个昵称（当前：<b>${state.user||''}</b>），进度自动恢复。下面的「进度码」是备用方案（云端故障时用）。</div>
   </div>
   <div class="card">
     <b>📤 备用：手动导出进度</b>
