@@ -126,6 +126,7 @@ function home(){
     <button class="btn ghost" id="btn-nav">🗺 题目总览</button>
   </div>
   <div class="row" style="margin-top:10px">
+    <button class="btn ghost" id="btn-sync">☁️ 换设备同步</button>
     <button class="btn ghost" id="btn-reset" style="color:var(--err);background:#fdecec">清空记录</button>
   </div>`;
   app.innerHTML=h;
@@ -135,6 +136,7 @@ function home(){
   document.getElementById('btn-wrong').onclick=()=>startQuiz({sec:'all',mode:'wrong'});
   document.getElementById('btn-done').onclick=()=>startQuiz({sec:'all',mode:'done'});
   document.getElementById('btn-nav').onclick=navView;
+  document.getElementById('btn-sync').onclick=syncView;
   document.getElementById('btn-reset').onclick=()=>{if(confirm('确定清空全部做题记录？')){state={rec:{},last:{},wrongEver:{}};save();home()}};
 }
 
@@ -283,6 +285,46 @@ function trainSummary(){
   document.getElementById('t-back').onclick=home;
   document.getElementById('t-home').onclick=home;
   document.getElementById('t-again').onclick=startTrain;
+  window.scrollTo(0,0);
+}
+function encState(){return btoa(unescape(encodeURIComponent(JSON.stringify(state))))}
+function decState(code){return JSON.parse(decodeURIComponent(escape(atob(code.trim()))))}
+function syncView(){
+  stopTimer();
+  const all=counts('all');
+  let h=`<header><span class="back" id="s-back">‹ 返回</span><h1 style="font-size:17px">☁️ 换设备同步</h1><span></span></header>
+  <div class="card">
+    <b>📤 旧设备：导出进度</b>
+    <div style="font-size:13.5px;color:var(--sub);margin:6px 0 10px">当前进度：已刷 ${all.done} 题 · 错题本 ${wrongList().length} 题。点下面按钮复制「进度码」，发到微信/备忘录带到新设备。</div>
+    <textarea id="s-out" readonly style="width:100%;height:72px;border:1px solid var(--bd);border-radius:10px;padding:8px;font-size:12px;word-break:break-all">${encState()}</textarea>
+    <button class="btn" id="s-copy" style="width:100%;margin-top:8px">📋 复制进度码</button>
+  </div>
+  <div class="card">
+    <b>📥 新设备：导入进度</b>
+    <div style="font-size:13.5px;color:var(--sub);margin:6px 0 10px">把旧设备复制的进度码粘贴到下面，点导入。会和本机记录自动合并，不会丢数据。</div>
+    <textarea id="s-in" placeholder="粘贴进度码…" style="width:100%;height:72px;border:1px solid var(--bd);border-radius:10px;padding:8px;font-size:12px"></textarea>
+    <button class="btn" id="s-imp" style="width:100%;margin-top:8px">📥 导入并合并</button>
+  </div>`;
+  app.innerHTML=h;
+  document.getElementById('s-back').onclick=home;
+  document.getElementById('s-copy').onclick=()=>{
+    const t=document.getElementById('s-out');t.select();t.setSelectionRange(0,999999);
+    const done=()=>{const b=document.getElementById('s-copy');b.textContent='✅ 已复制，去发给自己吧';setTimeout(()=>b.textContent='📋 复制进度码',2500)};
+    if(navigator.clipboard&&navigator.clipboard.writeText)navigator.clipboard.writeText(t.value).then(done).catch(()=>{document.execCommand('copy');done()});
+    else{document.execCommand('copy');done()}
+  };
+  document.getElementById('s-imp').onclick=()=>{
+    const v=document.getElementById('s-in').value;
+    if(!v.trim()){alert('先粘贴进度码');return}
+    let inc;try{inc=decState(v)}catch(e){alert('进度码不对，检查有没有复制完整');return}
+    if(!inc||typeof inc!=='object'||!inc.rec){alert('进度码内容无效');return}
+    Object.assign(state.rec,inc.rec||{});
+    Object.assign(state.wrongEver,inc.wrongEver||{});
+    Object.assign(state.last,inc.last||{});
+    save();
+    alert('✅ 导入成功！已合并 '+Object.keys(inc.rec||{}).length+' 条做题记录');
+    home();
+  };
   window.scrollTo(0,0);
 }
 function navView(){
