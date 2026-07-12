@@ -79,14 +79,40 @@ function timeUp(){
 }
 const SECS=['言语理解','资料分析','图形推理'];
 const LS='bs_tiku_v1';
+const SYNC_URL='https://mantledb.sh/v2/beisen-tiku-3251d869adf74743f0a8/progress';
+const SYNC_KEY='2a2dafafb1012c348299de6b2b6d5f529e4630c3690539a028447b72abedc2f9';
+let syncTimer=null,syncStatus='☁️ 连接云端…';
+function updSyncBadge(){const el=document.getElementById('sync-badge');if(el)el.textContent=syncStatus}
+function cloudPush(){
+  fetch(SYNC_URL,{method:'POST',headers:{'Content-Type':'application/json','X-Mantle-Key':SYNC_KEY},body:JSON.stringify({rec:state.rec,last:state.last,wrongEver:state.wrongEver,t:Date.now()})})
+  .then(r=>{syncStatus=r.ok?'☁️ 已同步云端 '+new Date().toLocaleTimeString('zh-CN',{hour:'2-digit',minute:'2-digit'}):'⚠️ 云同步失败（本地已保存）';updSyncBadge()})
+  .catch(()=>{syncStatus='⚠️ 离线（本地已保存）';updSyncBadge()});
+}
+function cloudPull(){return fetch(SYNC_URL,{headers:{'X-Mantle-Key':SYNC_KEY}}).then(r=>r.ok?r.json():null).catch(()=>null)}
+function mergeCloud(c){
+  if(!c||typeof c!=='object'||!c.rec)return 0;
+  let n=0;
+  Object.entries(c.rec||{}).forEach(([k,v])=>{if(state.rec[k]===undefined){state.rec[k]=v;n++}});
+  Object.keys(c.wrongEver||{}).forEach(k=>{if(!state.wrongEver[k]){state.wrongEver[k]=1;n++}});
+  Object.entries(c.last||{}).forEach(([k,v])=>{if(state.last[k]===undefined)state.last[k]=v});
+  return n;
+}
 function load(){try{state=JSON.parse(localStorage.getItem(LS))||{}}catch(e){state={}};state.rec=state.rec||{};state.last=state.last||{};
   if(!state.wrongEver){state.wrongEver={};Object.keys(state.rec).forEach(id=>{if(state.rec[id]===0)state.wrongEver[id]=1})}}
-function save(){localStorage.setItem(LS,JSON.stringify(state))}
+function save(){localStorage.setItem(LS,JSON.stringify(state));clearTimeout(syncTimer);syncTimer=setTimeout(cloudPush,1500)}
 const $=h=>{const d=document.createElement('div');d.innerHTML=h;return d.firstElementChild};
 const app=document.getElementById('app');
 const esc=s=>(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;');
 
-fetch('questions.json').then(r=>r.json()).then(d=>{QS=d;load();home()});
+fetch('questions.json').then(r=>r.json()).then(d=>{QS=d;load();home();
+  cloudPull().then(c=>{
+    if(c===null){syncStatus='⚠️ 云端连不上（不影响使用）';updSyncBadge();return}
+    const n=mergeCloud(c);
+    syncStatus='☁️ 已同步云端 '+new Date().toLocaleTimeString('zh-CN',{hour:'2-digit',minute:'2-digit'});
+    if(n>0){localStorage.setItem(LS,JSON.stringify(state));if(view.page==='home'){home();return}}
+    updSyncBadge();
+  });
+});
 
 function counts(sec){
   const list=QS.filter(q=>sec==='all'||q.section===sec);
@@ -109,7 +135,7 @@ function home(){
     <div><b>${all.done?Math.round(all.ok/all.done*100):0}%</b><span>正确率</span></div>
   </div>
   <div class="card"><div class="bar"><i style="width:${all.total?all.done/all.total*100:0}%"></i></div>
-  <span style="font-size:13px;color:var(--sub)">总进度 ${all.done}/${all.total}</span></div>`;
+  <span style="font-size:13px;color:var(--sub)">总进度 ${all.done}/${all.total}</span><span id="sync-badge" style="float:right;font-size:12px;color:var(--sub)">${syncStatus}</span></div>`;
   SECS.forEach(s=>{
     const c=counts(s);
     h+=`<div class="secbtn" data-sec="${s}"><div><b>${s}</b><div class="meta">${c.done}/${c.total} · 正确率 ${c.done?Math.round(c.ok/c.done*100):0}%</div></div><span style="color:var(--pri)">刷题 ›</span></div>`;
@@ -294,7 +320,11 @@ function syncView(){
   const all=counts('all');
   let h=`<header><span class="back" id="s-back">‹ 返回</span><h1 style="font-size:17px">☁️ 换设备同步</h1><span></span></header>
   <div class="card">
-    <b>📤 旧设备：导出进度</b>
+    <b>☁️ 自动云同步已开启</b>
+    <div style="font-size:13.5px;color:var(--sub);margin:6px 0 4px">做题记录会自动同步到云端。换设备打开本网页，稍等 1-2 秒会自动恢复进度，什么都不用做。下面的「进度码」是备用方案（云端故障时用）。</div>
+  </div>
+  <div class="card">
+    <b>📤 备用：手动导出进度</b>
     <div style="font-size:13.5px;color:var(--sub);margin:6px 0 10px">当前进度：已刷 ${all.done} 题 · 错题本 ${wrongList().length} 题。点下面按钮复制「进度码」，发到微信/备忘录带到新设备。</div>
     <textarea id="s-out" readonly style="width:100%;height:72px;border:1px solid var(--bd);border-radius:10px;padding:8px;font-size:12px;word-break:break-all">${encState()}</textarea>
     <button class="btn" id="s-copy" style="width:100%;margin-top:8px">📋 复制进度码</button>
