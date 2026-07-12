@@ -100,7 +100,7 @@ function home(){
     <button class="btn" id="btn-train">🏋️ 训练模式（各题型10题）</button>
   </div>
   <div class="row" style="margin-top:10px">
-    <button class="btn ghost" id="btn-rand">🎲 随机刷题</button>
+    <button class="btn ghost" id="btn-rand">🎲 随机刷题（各题型15题）</button>
     <button class="btn ghost" id="btn-wrong">📕 错题本 (${wl})</button>
   </div>
   <div class="row" style="margin-top:10px">
@@ -127,7 +127,11 @@ function startTrain(){
 function buildList(o){
   let list=QS.filter(q=>o.sec==='all'||q.section===o.sec);
   if(o.mode==='wrong')list=wrongList();
-  if(o.mode==='rand'){list=[...list];for(let i=list.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[list[i],list[j]]=[list[j],list[i]]}}
+  if(o.mode==='rand'){
+    if(o.sec==='all'){list=[];SECS.forEach(s=>{list=list.concat(sample(QS.filter(q=>q.section===s),15))})}
+    else{list=sample(list,15)}
+    list=sample(list,list.length);
+  }
   return list;
 }
 function startQuiz(o){
