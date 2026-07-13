@@ -189,15 +189,22 @@ function home(){
 }
 
 function sample(arr,n){const a=[...arr];for(let i=a.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[a[i],a[j]]=[a[j],a[i]]}return a.slice(0,n)}
+function hashStr(s){let h=0;for(let i=0;i<s.length;i++)h=(h*31+s.charCodeAt(i))>>>0;return h}
+function seededShuffle(arr,seed){const a=[...arr];let s=(seed>>>0)||1;const rnd=()=>{s=(s*1664525+1013904223)>>>0;return s/4294967296};for(let i=a.length-1;i>0;i--){const j=Math.floor(rnd()*(i+1));[a[i],a[j]]=[a[j],a[i]]}return a}
 function startTrain(){
   let list=[];
   SECS.forEach(s=>{list=list.concat(sample(QS.filter(q=>q.section===s),10))});
+  list=sample(list,list.length);
   if(!list.length){alert('题库为空');return}
   view={page:'quiz',o:{sec:'train',mode:'train'},list,idx:0,answered:null};
   renderQ();window.scrollTo(0,0);
 }
 function buildList(o){
   let list=QS.filter(q=>o.sec==='all'||q.section===o.sec);
+  if(o.mode==='seq'){
+    if(!state.seed){state.seed=Math.floor(Math.random()*1e9)+1;save()}
+    list=seededShuffle(list,state.seed+hashStr(o.sec));
+  }
   if(o.mode==='wrong')list=sample(wrongList(),QS.length);
   if(o.mode==='done')list=sample(doneList(),QS.length);
   if(o.mode==='rand'){
@@ -231,10 +238,19 @@ function renderQ(){
   if(isFig&&!hasTextOpts)h+=`<div class="imgnote">🖼 图中选项从上往下依次为 A、B、C、D${''}（可能含 E），看图作答</div>`;
   q.opt_imgs.forEach(f=>h+=`<img src="img/${f}" loading="lazy">`);
   h+=`<div class="opts" id="opts">`;
-  const letters=hasTextOpts?Object.keys(q.options).sort():['A','B','C','D','E'].slice(0,q.answer>'D'?5:4);
-  letters.forEach(L=>{
-    h+=`<div class="opt" data-l="${L}"><span class="tag">${L}</span><span>${hasTextOpts?esc(q.options[L]):'选 '+L}</span></div>`;
-  });
+  view.dmap=null;
+  if(hasTextOpts){
+    const order=sample(Object.keys(q.options).sort(),9);
+    view.dmap={};
+    order.forEach((L,i)=>{
+      const D='ABCDE'[i];view.dmap[L]=D;
+      h+=`<div class="opt" data-l="${L}"><span class="tag">${D}</span><span>${esc(q.options[L])}</span></div>`;
+    });
+  }else{
+    ['A','B','C','D','E'].slice(0,q.answer>'D'?5:4).forEach(L=>{
+      h+=`<div class="opt" data-l="${L}"><span class="tag">${L}</span><span>选 ${L}</span></div>`;
+    });
+  }
   h+=`</div><div style="text-align:right;margin-bottom:4px"><span id="q-peek" style="font-size:13px;color:var(--sub);cursor:pointer;text-decoration:underline">👀 直接看答案</span></div><div id="feedback"></div></div>`;
   app.innerHTML=h+`<div class="foot"><div class="inner">
     <button class="btn ghost" id="q-prev" ${idx===0?'disabled style="opacity:.4"':''}>上一题</button>
@@ -255,15 +271,22 @@ function renderQ(){
   if(r!==undefined&&o.mode==='seq')reveal(null,true);
   else if(!view.answered)startTimer();
 }
+function ansLabel(q){
+  const d=view.dmap?view.dmap[q.answer]:q.answer;
+  return d!==q.answer?d+'（原题为 '+q.answer+'）':d;
+}
+function jiexiNote(){
+  return view.dmap?`<span style="color:var(--sub);font-size:12.5px">（本题选项已打乱，解析中的字母按原题顺序）</span>`:'';
+}
 function peek(){
   if(view.answered)return;
   stopTimer();
   view.answered='peek';
   const q=view.list[view.idx];
   document.querySelectorAll('.opt').forEach(el=>{el.onclick=null;if(el.dataset.l===q.answer)el.classList.add('right');else el.classList.add('dim')});
-  let fb=`<div class="result ok">👀 正确答案 ${q.answer}（背题模式，不计入统计）</div>`;
+  let fb=`<div class="result ok">👀 正确答案 ${ansLabel(q)}（背题模式，不计入统计）</div>`;
   if(q.jiexi||q.jiexi_imgs.length){
-    fb+=`<div class="jiexi"><b>💡 解析：</b>${esc(q.jiexi)||'（无文字解析）'}`;
+    fb+=`<div class="jiexi"><b>💡 解析：</b>${jiexiNote()}${esc(q.jiexi)||'（无文字解析）'}`;
     q.jiexi_imgs.forEach(f=>fb+=`<img src="img/${f}" loading="lazy">`);
     fb+=`</div>`;
   }
@@ -292,11 +315,12 @@ function reveal(L,past,timeout){
     else el.classList.add('dim');
   });
   const ok=past?state.rec[q.id]===1:(L===q.answer);
-  let fb=timeout?`<div class="result err">⏰ 超时（60秒），本题判错 · 正确答案 ${q.answer}</div>`
-           :past?`<div class="result ${ok?'ok':'err'}">${ok?'✅ 之前答对了':'❌ 之前答错了'} · 正确答案 ${q.answer}</div>`
-           :`<div class="result ${ok?'ok':'err'}">${ok?'🎉 回答正确！':'❌ 答错了'} · 正确答案 ${q.answer}</div>`;
+  const A=ansLabel(q);
+  let fb=timeout?`<div class="result err">⏰ 超时（60秒），本题判错 · 正确答案 ${A}</div>`
+           :past?`<div class="result ${ok?'ok':'err'}">${ok?'✅ 之前答对了':'❌ 之前答错了'} · 正确答案 ${A}</div>`
+           :`<div class="result ${ok?'ok':'err'}">${ok?'🎉 回答正确！':'❌ 答错了'} · 正确答案 ${A}</div>`;
   if(q.jiexi||q.jiexi_imgs.length){
-    fb+=`<div class="jiexi"><b>💡 解析：</b>${esc(q.jiexi)||'（无文字解析）'}`;
+    fb+=`<div class="jiexi"><b>💡 解析：</b>${jiexiNote()}${esc(q.jiexi)||'（无文字解析）'}`;
     q.jiexi_imgs.forEach(f=>fb+=`<img src="img/${f}" loading="lazy">`);
     fb+=`</div>`;
   }
@@ -396,7 +420,8 @@ function navView(){
   document.querySelectorAll('.cell').forEach(el=>el.onclick=()=>{
     const id=+el.dataset.id;
     const q=QS.find(x=>x.id===id);
-    const list=QS.filter(x=>x.section===q.section);
+    let list=QS.filter(x=>x.section===q.section);
+    if(state.seed)list=seededShuffle(list,state.seed+hashStr(q.section));
     view={page:'quiz',o:{sec:q.section,mode:'seq'},list,idx:list.findIndex(x=>x.id===id),answered:null};
     renderQ();window.scrollTo(0,0);
   });
